@@ -1,5 +1,6 @@
 module Language where
 import Utils
+import Char (isDigit, isAlpha)
 
 -- 1.3 Data types for the Core language
 
@@ -211,4 +212,101 @@ iLayn :: [Iseq] -> Iseq
 iLayn seqs = iConcat (map lay_item (zip [1..] seqs))
     where lay_item (n, seq)
               = iConcat [ iFWNum 4 n, iStr ") ", iIndent seq, iNewline ]
+
+-- 1.6 A parser for the Core language (p29)
+
+clex :: String -> [Token]
+
+syntax :: [Token] -> CoreProgram
+
+parse :: String -> CoreProgram
+parse = syntax . clex
+
+-- 1.6.1 Lexical analysis (p30)
+
+type Token = String -- A token is never empty
+
+-- > clex "1 234 hello_world <="
+clex (c:cs) | isWhiteSpace c = clex cs
+
+clex (c:cs) | isDigit c = num_token : clex rest_cs
+            where
+              num_token = c : takeWhile isDigit cs
+              rest_cs	= dropWhile isDigit cs
+
+clex (c:cs) | isAlpha c = var_tok : clex rest_cs
+            where
+              var_tok = c : takeWhile isIdChar cs
+              rest_cs = dropWhile isIdChar cs
+
+clex (c:cs) = [c] : clex cs
+
+clex [] = []
+
+isIdChar, isWhiteSpace :: Char -> Bool
+isIdChar c = isAlpha c || isDigit c || (c == '_')
+isWhiteSpace c = c `elem` " \t\n"
+
+-- 1.6.2 Basic tools for parsing (p32)
+
+type Parser a = [Token] -> [(a, [Token])]
+
+-- > pLit "hello" ["hello", "John", "!"]
+pLit :: String -> Parser String
+-- pLit s (tok:toks) | s == tok    = [(s, toks)]
+--                   | otherwise   = []
+-- pLit s []                       = []
+
+pVar :: Parser String
+-- pVar []	= []
+
+pAlt :: Parser a -> Parser a -> Parser a
+pAlt p1 p2 toks = (p1 toks) ++ (p2 toks)
+
+-- pHelloOrGoodbye . clex $ "goodbye"
+pHelloOrGoodbye :: Parser String
+pHelloOrGoodbye = (pLit "hello") `pAlt` (pLit "goodbye")
+
+pThen :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
+pThen combine p1 p2 toks
+    = [ (combine v1 v2, toks2) | (v1,toks1) <- p1 toks,
+                                 (v2,toks2) <- p2 toks1]
+
+-- > pGreeting ["goodbye", "James", "!"]
+pGreeting :: Parser (String, String)
+pGreeting = pThen mk_pair pHelloOrGoodbye pVar
+    where
+      mk_pair hg name = (hg, name)
+
+
+-- 1.6.3 Sharpening the tools (p34)
+
+-- pZeroOrMore :: Parser a -> Parser [a]
+
+-- pGreetings :: Parser [(String, String)]
+-- pGreetings = pZeroOrMore pGreeting
+
+-- pZeroOrMore p = (pOneOrMore p) `pAlt` (pEmpty [])
+
+-- pEmpty :: a -> Parser a
+-- pOneOrMore :: Parser a -> Parser [a]
+
+
+
+-- pSat :: (String -> Bool) -> Parser String
+-- pSat p (tok:toks) | p tok = [(tok, toks)]
+--                   | otherwise = []
+
+
+-- Exercise 1.16. (p36)
+
+pLit s = pSat (== s)
+
+pVar = pSat isVar
+    where
+      isVar (c:cs) = isAlpha c && isVar' cs
+      isVar' (c:cs) = isIdChar c && isVar' cs
+      isVar' [] = True
+
+syntax = undefined
 
