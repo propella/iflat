@@ -91,7 +91,12 @@ iIndent :: Iseq -> Iseq		-- Indent an iseq
 iDisplay :: Iseq -> String	-- Turn an iseq into a string
 
 pprExpr :: CoreExpr -> Iseq
+
 pprExpr (EVar v) = iStr v
+
+pprExpr (EAp (EAp (EVar "+") e1) e2) -- (p27)
+    = iConcat [ pprAExpr e1, iStr " + ", pprAExpr e2 ]
+
 pprExpr (EAp e1 e2) = (pprExpr e1) `iAppend` (iStr " ") `iAppend` (pprAExpr e2)
 
 pprExpr (ELet isrec defns expr)
@@ -152,9 +157,9 @@ iStr str		= IStr str
 -- flatten (IStr s : seqs) = s ++ (flatten seqs)
 -- flatten (IAppend seq1 seq2 : seqs) = flatten (seq1 : seq2 : seqs)
 
--- putStrLn $ iDisplay $ IStr "hello"
--- putStrLn $ iDisplay $ pprExpr (EAp (EVar "func") (EVar "x"))
--- putStrLn $ iDisplay $ pprExpr (ELet True [("x", (EVar "a")),("y", (EVar "b"))] (EVar "x"))
+-- > putStrLn $ iDisplay $ IStr "hello"
+-- > putStrLn $ iDisplay $ pprExpr (EAp (EVar "func") (EVar "x"))
+-- > putStrLn $ iDisplay $ pprExpr (ELet True [("x", (EVar "a")),("y", (EVar "b"))] (EVar "x"))
 
 -- 1.5.4 Layout and indentation (p26)
 
@@ -189,5 +194,21 @@ flatten col ((IStr s, indent) : seqs)
 flatten col ((IAppend seq1 seq2, indent) : seqs)
     = flatten col ((seq1, indent) : (seq2, indent) : seqs)
 
--- 1.5.5 Operator precedence (p27)
+-- 1.5.6 Other useful functions on iseq (28)
+
+iNum :: Int -> Iseq
+iNum n = iStr (show n)
+
+-- > iDisplay (iFWNum 5 100)
+iFWNum :: Int -> Int -> Iseq
+iFWNum width n
+    = iStr (space (width - length digits) ++ digits)
+      where
+        digits = show n
+
+-- > putStr . iDisplay . iLayn $ [iNum 10, iNum 20, iNum 30]
+iLayn :: [Iseq] -> Iseq
+iLayn seqs = iConcat (map lay_item (zip [1..] seqs))
+    where lay_item (n, seq)
+              = iConcat [ iFWNum 4 n, iStr ") ", iIndent seq, iNewline ]
 
