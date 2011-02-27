@@ -16,7 +16,7 @@ data Expr a = EVar Name
                 (Expr a)
                 [Alter a]
             | ELam [a] (Expr a)
-              deriving (Show)
+              deriving (Show, Eq)
 
 type CoreExpr = Expr Name
 
@@ -239,6 +239,8 @@ clex (c:cs) | isAlpha c = var_tok : clex rest_cs
               var_tok = c : takeWhile isIdChar cs
               rest_cs = dropWhile isIdChar cs
 
+clex (c1:c2:cs) | (c1:c2:[]) `elem` twoCharOps = (c1:c2:[]) : clex cs
+
 clex (c:cs) = [c] : clex cs
 
 clex [] = []
@@ -246,6 +248,11 @@ clex [] = []
 isIdChar, isWhiteSpace :: Char -> Bool
 isIdChar c = isAlpha c || isDigit c || (c == '_')
 isWhiteSpace c = c `elem` " \t\n"
+
+-- Exercise 1.10. (p31)
+
+twoCharOps :: [String]
+twoCharOps = ["==", "~=", ">=", "<=", "->"]
 
 -- 1.6.2 Basic tools for parsing (p32)
 
@@ -383,4 +390,153 @@ pVar = pSat isVar
       isVar' (c:cs) = isIdChar c && isVar' cs
       isVar' [] = True
 
-syntax = undefined
+-- 1.6.4 Parsing the Core language (p37)
+
+syntax = take_first_parse . pProgram
+    where take_first_parse ((prog,[]) : others) = prog
+          take_first_parse (parse	: others) = take_first_parse others
+          take_first_parse other	= error "Syntax error"
+
+-- Programs
+pProgram :: Parser CoreProgram
+pProgram = pOneOrMoreWithSep pSc (pLit ";")
+
+-- SuperCombinators
+pSc :: Parser CoreScDefn
+pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
+
+-- Exercise 1.20. (p38)
+
+mk_sc :: Name -> [Name] -> Name -> CoreExpr -> (Name, [Name], CoreExpr)
+mk_sc name args _ expr = (name, args, expr)
+
+-- Exercise 1.21. (p38)
+
+-- Expressions
+pExpr :: Parser CoreExpr
+pExpr = pApplication
+        `pAlt` pAexpr
+        `pAlt` pELet
+        `pAlt` pECase
+
+-- Binary operators (todo)
+
+data PartialExpr = NoOp | FoundOp Name CoreExpr
+
+assembleOp :: CoreExpr -> PartialExpr -> CoreExpr
+assembleOp e1 NoOp = e1
+assembleOp e1 (FoundOp op e2) = EAp (EAp (EVar op) e1) e2
+
+pRelop :: Parser String
+pRelop = pSat (`elem` ["<", "<=", "==", "~=", "<=", ">"])
+
+pExpr1,  pExpr2,  pExpr3,  pExpr4,  pExpr5 :: Parser CoreExpr
+pExpr1c, pExpr2c, pExpr3c, pExpr4c, pExpr5c :: Parser PartialExpr
+
+pExpr1 = pThen assembleOp pExpr2 pExpr1c
+pExpr1c = (pThen FoundOp (pLit "|") pExpr2) `pAlt` (pEmpty NoOp)
+
+pExpr2 = pThen assembleOp pExpr3 pExpr2c
+pExpr2c = (pThen FoundOp (pLit "&") pExpr3) `pAlt` (pEmpty NoOp)
+
+pExpr3 = pThen assembleOp pExpr4 pExpr3c
+pExpr3c = (pThen FoundOp pRelop pExpr4) `pAlt` (pEmpty NoOp)
+
+pExpr4 = pThen assembleOp pExpr5 pExpr4c
+pExpr4c = (pThen FoundOp (pLit "+" `pAlt` pLit "-") pExpr5) `pAlt` (pEmpty NoOp)
+
+pExpr5 = pThen assembleOp pExpr6 pExpr5c
+pExpr5c = (pThen FoundOp (pLit "*" `pAlt` pLit "/") pExpr6) `pAlt` (pEmpty NoOp)
+
+-- pExpr5 = p
+
+pExpr6 = pAexpr
+
+
+-- Lambda
+pELam :: Parser CoreExpr
+pELam = pThen f (pLit "\\" `pSkip` (pOneOrMore pVar))
+                (pLit "." `pSkip` pExpr)
+    where
+      f vars expr = ELam vars expr
+
+-- Case (not tested)
+
+pECase :: Parser CoreExpr
+pECase = pThen f (pLit "case" `pSkip` pExpr)
+                 (pLit "of" `pSkip` pAlternatives)
+    where
+      f expr alts = ECase expr alts
+
+pAlternatives :: Parser [CoreAlt]
+pAlternatives = pOneOrMoreWithSep pAlternative (pLit ";")
+
+pAlternative :: Parser CoreAlt
+pAlternative = pThen3 f (pLit "<" `pSkip` pNum)
+                        (pLit ">" `pSkip` (pOneOrMore pVar))
+                        (pLit "->" `pSkip` pExpr)
+    where
+      f i names expr = (i, names, expr)
+
+-- Application
+
+pApplication = (pOneOrMore pAexpr) `pApply` mk_ap_chain
+mk_ap_chain :: [CoreExpr] -> CoreExpr
+mk_ap_chain xs = foldl1 EAp xs
+
+-- Let
+
+pELet :: Parser CoreExpr
+pELet = pThen4 f (pLit "let" `pAlt` pLit "letrec") pDefns (pLit "in") pExpr
+    where
+      f "let" defns _ expr = ELet False defns expr
+      f "letrec" defns _ expr = ELet True defns expr
+
+pDefns :: Parser [(Name, CoreExpr)]
+pDefns = pOneOrMoreWithSep pDefn (pLit ";")
+
+pDefn = pThen3 f pVar (pLit "=") pExpr
+    where
+      f name _ expr = (name, expr)
+
+-- Atomic Exprssions
+
+pAexpr :: Parser CoreExpr
+pAexpr = pENum `pAlt` pEVar `pAlt` pEConstr `pAlt` pParenthesis
+
+pNum :: Parser Int
+pNum = (pSat (all isDigit)) `pApply` read
+
+pEVar :: Parser CoreExpr
+pEVar = pVar `pApply` EVar
+
+pENum :: Parser CoreExpr
+pENum = pNum `pApply` ENum
+
+pSkip :: Parser a -> Parser b -> Parser b
+pSkip p1 p2 = pThen (\v1 v2 -> v2) p1 p2
+
+pEConstr :: Parser CoreExpr
+pEConstr = pThen3 f ((pLit "Pack") `pSkip` (pLit "{") `pSkip` pNum)
+                    ((pLit ",") `pSkip` pNum)
+                    (pLit "}")
+    where
+      f v1 v2 _ = EConstr v1 v2
+
+pParenthesis = pThen3 f (pLit "(") pExpr (pLit ")")
+    where
+      f _ v _ = v
+
+
+-- pAExpr = pVar
+--   `pAlt` 
+
+--             | ENum Int
+-- pNum :: Parser ENum         
+-- -- > pVar ["let", "world"] -- []
+-- pVar = pSat isVar
+--     where
+--       isVar cs | elem cs keywords == True = False
+--       isVar (c:cs) = isAlpha c && isVar' cs
+--       isVar' (c:cs) = isIdChar c && isVar' cs
+--       isVar' [] = True
