@@ -11,7 +11,9 @@ http://research.microsoft.com/en-us/um/people/simonpj/papers/pj-lester-book/
 
 * Found bugs:
 
-** p27: was + 2 necessary?.
+** p27: "+ 2" was necessary for proper indent.
 
 flatten col ((IIndent seq, indent) : seqs)
     = flatten col ((seq, col + 2) : seqs)
+
+** p33: definition of pVar is missing.

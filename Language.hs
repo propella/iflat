@@ -249,6 +249,8 @@ isWhiteSpace c = c `elem` " \t\n"
 
 -- 1.6.2 Basic tools for parsing (p32)
 
+-- The parser takes tokens and returns a list of results (can be ambiguous).
+-- It returns [] if it does not match.
 type Parser a = [Token] -> [(a, [Token])]
 
 -- > pLit "hello" ["hello", "John", "!"]
@@ -263,7 +265,7 @@ pVar :: Parser String
 pAlt :: Parser a -> Parser a -> Parser a
 pAlt p1 p2 toks = (p1 toks) ++ (p2 toks)
 
--- pHelloOrGoodbye . clex $ "goodbye"
+-- > pHelloOrGoodbye . clex $ "goodbye"
 pHelloOrGoodbye :: Parser String
 pHelloOrGoodbye = (pLit "hello") `pAlt` (pLit "goodbye")
 
@@ -272,41 +274,113 @@ pThen combine p1 p2 toks
     = [ (combine v1 v2, toks2) | (v1,toks1) <- p1 toks,
                                  (v2,toks2) <- p2 toks1]
 
--- > pGreeting ["goodbye", "James", "!"]
-pGreeting :: Parser (String, String)
-pGreeting = pThen mk_pair pHelloOrGoodbye pVar
-    where
-      mk_pair hg name = (hg, name)
-
+-- pGreeting :: Parser (String, String)
+-- pGreeting = pThen mk_pair pHelloOrGoodbye pVar
+--     where
+--       mk_pair hg name = (hg, name)
 
 -- 1.6.3 Sharpening the tools (p34)
 
--- pZeroOrMore :: Parser a -> Parser [a]
+-- pGreeting = pThen keep_first
+--                   (pThen mk_pair pHelloOrGoodbye pVar)
+--                   (pLit "!")
+--     where
+--       keep_first hg_name exclamation = hg_name
+--       mk_pair hg name = (hg, name)
 
+-- > pGreeting ["goodbye", "James", "!"]
+pGreeting = pThen3 mk_greeting
+                   pHelloOrGoodbye
+                   pVar
+                   (pLit "!")
+    where
+      mk_greeting hg name exclamation = (hg, name)
+
+-- Exercise 1.12 (35). 
+
+pThen3 :: (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
+pThen3 combine p1 p2 p3 toks
+    = [ (combine v1 v2 v3, toks3) | (v1, toks1) <- p1 toks,
+                                    (v2, toks2) <- p2 toks1,
+                                    (v3, toks3) <- p3 toks2]
+
+pThen4 :: (a -> b -> c -> d -> e) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e
+pThen4 combine p1 p2 p3 p4
+    = pThen ($) (pThen ($) (pThen combine p1 p2) p3) p4
+
+pZeroOrMore :: Parser a -> Parser [a]
+
+-- > pGreeting ["goodbye", "James", "!"]
 -- pGreetings :: Parser [(String, String)]
 -- pGreetings = pZeroOrMore pGreeting
 
--- pZeroOrMore p = (pOneOrMore p) `pAlt` (pEmpty [])
+-- > pZeroOrMore pGreeting $ ["goodbye", "James", "!", "goodbye", "James", "!"]
+-- -- [([("goodbye","James"),("goodbye","James")],[]),([("goodbye","James")],["goodbye","James","!"]),([],["goodbye","James","!","goodbye","James","!"])]
+-- This returns all possible ambiguous results.
+pZeroOrMore p = (pOneOrMore p) `pAlt` (pEmpty [])
 
--- pEmpty :: a -> Parser a
--- pOneOrMore :: Parser a -> Parser [a]
+pEmpty :: a -> Parser a
+pOneOrMore :: Parser a -> Parser [a]
 
+-- Exercise 1.13 (p35). 
 
+-- > pEmpty "nil" $ ["hello"] -- [("nil", ["hello"])]
+pEmpty v toks = [(v, toks)]
 
--- pSat :: (String -> Bool) -> Parser String
--- pSat p (tok:toks) | p tok = [(tok, toks)]
---                   | otherwise = []
+pOneOrMore p = pThen (:) p (pZeroOrMore p)
 
+-- > pGreetingsN $ ["goodbye", "James", "!", "goodbye", "James", "!"]
+-- -- [(2,[]),(1,["goodbye","James","!"]),(0,["goodbye","James","!","goodbye","James","!"])]
+pGreetingsN :: Parser Int
+pGreetingsN = (pZeroOrMore pGreeting) `pApply` length
+
+-- Exercise 1.14. (p36)
+
+pApply :: Parser a -> (a -> b) -> Parser b
+pApply p f toks = [ (f v, toks') | (v, toks') <- p toks ]
+
+-- Exercise 1.15. (p36)
+
+-- > (pOneOrMoreWithSep pVar (pLit ",")) $ ["apple", ",", "orange", ",", "banana"]
+-- -- [(["apple","orange","banana"],[]),(["apple","orange"],[",","banana"]),(["apple"],[",","orange",",","banana"])]
+
+pOneOrMoreWithSep :: Parser a -> Parser b -> Parser [a]
+
+pOneOrMoreWithSep p1 p2
+    = pThen (:) p1 (pOneOrMoreWithSep' p1 p2)
+
+pOneOrMoreWithSep' p1 p2
+    = pZeroOrMore (pThen (\v1 v2 -> v2) p2 p1)
+
+-- > pSat (== "hello") ["hello", "world"] -- [("hello",["world"])]
+-- > pSat (== "hello") ["world", "hello"] -- []
+-- > pSat (== "hello") [] -- []
+pSat :: (String -> Bool) -> Parser String
+pSat p (tok:toks) | p tok = [(tok, toks)]
+                  | otherwise = []
+pSat p [] = []
 
 -- Exercise 1.16. (p36)
 
 pLit s = pSat (== s)
 
+-- pVar = pSat isVar
+--     where
+--       isVar (c:cs) = isAlpha c && isVar' cs
+--       isVar' (c:cs) = isIdChar c && isVar' cs
+--       isVar' [] = True
+
+-- Exercise 1.17. (p37)
+
+keywords :: [String]
+keywords = ["let", "letrec", "case", "in", "of", "Pack"]
+
+-- > pVar ["let", "world"] -- []
 pVar = pSat isVar
     where
+      isVar cs | elem cs keywords == True = False
       isVar (c:cs) = isAlpha c && isVar' cs
       isVar' (c:cs) = isIdChar c && isVar' cs
       isVar' [] = True
 
 syntax = undefined
-
