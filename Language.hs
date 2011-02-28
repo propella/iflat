@@ -100,6 +100,7 @@ pprExpr (ENum n) = iNum n
 -- pprExpr (EAp (EAp (EVar "+") e1) e2) -- (p28)
 --    = iConcat [ pprAExpr e1, iStr " + ", pprAExpr e2 ]
 
+-- (support support infix operators)
 pprExpr (EAp (EAp (EVar op) e1) e2)
    | op `elem` ["&", "|", "<", "<=", "==", "~=", "<=", ">", "+", "-", "*", "/"]
     = iConcat [ pprAExpr e1, iStr " ", iStr op, iStr " ", pprAExpr e2 ]
@@ -107,12 +108,29 @@ pprExpr (EAp (EAp (EVar op) e1) e2)
 pprExpr (EAp e1 e2) = (pprExpr e1) `iAppend` (iStr " ") `iAppend` (pprAExpr e2)
 
 pprExpr (ELet isrec defns expr)
-        = iConcat [ iStr keyword, iNewline,
-                    iStr "  ", iIndent (pprDefns defns), iNewline,
-                    iStr "in ", pprExpr expr ]
-          where
-            keyword | not isrec = "let"
-                    | isrec = "letrec"
+    = iConcat [ iStr keyword, iNewline,
+                iStr "  ", iIndent (pprDefns defns), iNewline,
+                iStr "in ", pprExpr expr ]
+    where
+      keyword | not isrec = "let"
+              | isrec = "letrec"
+
+pprExpr (ECase expr alts)
+    = iConcat [ iStr "case ",
+                pprExpr expr,
+                iStr " of ",
+                iIndent (
+                         iConcat [
+                          iNewline,
+                                  iInterleave (iConcat [iStr ";", iNewline]) (map pprAlter alts) ]),
+                iNewline ]
+
+pprAlter :: CoreAlt -> Iseq
+pprAlter (n, names, expr)
+    = iConcat [ iStr "<", iNum n, iStr "> ",
+                iInterleave (iStr " ") (map iStr names),
+                iStr " -> ",
+                pprExpr expr ]
 
 pprDefns :: [(Name, CoreExpr)] -> Iseq
 pprDefns defns = iInterleave sep (map pprDefn defns)
@@ -430,6 +448,7 @@ mk_sc name args _ expr = (name, args, expr)
 
 -- Exercise 1.21. (p38) todo print case expression
 
+-- putStr ( pprint (parse exercise21))
 exercise21 = "f = 3;\
              \g x y = let z = x in z ;\
              \h x = case (let y = x in y) of\
@@ -485,7 +504,7 @@ pELam = pThen f (pLit "\\" `pSkip` (pOneOrMore pVar))
     where
       f vars expr = ELam vars expr
 
--- Case (not tested)
+-- Case
 
 pECase :: Parser CoreExpr
 pECase = pThen f (pLit "case" `pSkip` pExpr)
@@ -498,7 +517,7 @@ pAlternatives = pOneOrMoreWithSep pAlternative (pLit ";")
 
 pAlternative :: Parser CoreAlt
 pAlternative = pThen3 f (pLit "<" `pSkip` pNum)
-                        (pLit ">" `pSkip` (pOneOrMore pVar))
+                        (pLit ">" `pSkip` (pZeroOrMore pVar))
                         (pLit "->" `pSkip` pExpr)
     where
       f i names expr = (i, names, expr)
