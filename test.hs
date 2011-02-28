@@ -1,15 +1,48 @@
 import Test.HUnit
 import Language
 
+-- putStr . pprint . parse $ srcLet
+srcLet =
+  "f  = let\n\
+  \  a = x\n\
+  \in let\n\
+  \  b = a\n\
+  \in b\n"
+
+
+-- putStr . pprint . parse $ exercise21
+exercise21 = "f  = 3;\n\
+             \g x y = let\n\
+             \  z = x\n\
+             \in z;\n\
+             \h x = case let\n\
+             \  y = x\n\
+             \in y of\n\
+             \  <1>  -> 2;\n\
+             \  <2>  -> 5\n"
+
+-- putStr . pprint . parse $ exercise22
+exercise22 = "f x y = case x of\n\
+             \  <1>  -> case y of\n\
+             \    <1>  -> 1;\n\
+             \    <2>  -> 2\n"
+
 ipprExpr :: [(CoreExpr, [Token])] -> String
 ipprExpr ((expr, []) :_)  = iDisplay . pprExpr $ expr
 
 main = runTestTT allTest
 
+parseAndPrintTest = test [
+    "let" ~: (pprint . parse $ srcLet) ~?= srcLet
+    ,"let and case" ~: (pprint . parse $ exercise21) ~?= exercise21
+    ,"case" ~: (pprint . parse $ exercise22) ~?= exercise22
+                    ]
+
 allTest = test [
            "lexer" ~: lexTest
            ,"print" ~: printTest
            ,"parser" ~: parserTest
+           ,"parse and print" ~: parseAndPrintTest
           ]
 
 printTest = test [
@@ -17,7 +50,7 @@ printTest = test [
            ,"num" ~: (iDisplay $ pprExpr $ ENum 7) ~?= "7"
            ,"app" ~: (iDisplay $ pprExpr $ (EAp (EVar "f") (EVar "x"))) ~?= "f x"
            ,"op" ~: (iDisplay $ pprExpr $ (EAp (EAp (EVar "+") (ENum 3)) (ENum 4))) ~?= "3 + 4"
-           ,"case" ~: (iDisplay $ pprExpr $ (ECase (EVar "a") [(1,[],EVar "a"),(2,["x"],EVar "x")])) ~?= ""
+--            ,"case" ~: (iDisplay $ pprExpr $ (ECase (EVar "a") [(1,[],EVar "a"),(2,["x"],EVar "x")])) ~?= ""
            ]
 
 lexTest = test [

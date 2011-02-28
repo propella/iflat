@@ -2,7 +2,7 @@ module Language where
 import Utils
 import Char (isDigit, isAlpha)
 
--- 1.3 Data types for the Core language
+-- 1.3 Data types for the Core language (p17)
 
 data Expr a = EVar Name
             | E String (Expr a) (Expr a)
@@ -48,7 +48,7 @@ type CoreProgram = Program Name
 type ScDefn a = (Name, [a], Expr a)
 type CoreScDefn = ScDefn Name
 
--- 1.4 A small standard prelude
+-- 1.4 A small standard prelude (p20)
 -- I x = x
 -- K x y = x
 -- K1 x y = y 
@@ -67,7 +67,7 @@ preludeDefs
                                        (EAp (EVar "g") (EVar "x"))), 
         ("twice", ["f"], EAp (EAp (EVar "compose") (EVar "f")) (EVar "f")) ]
 
--- 1.5.1 Pretty-printing using strings
+-- 1.5.1 Pretty-printing using strings (p22)
 -- pprExpr (EAp (EVar "f") (EVar "x"))
 
 -- pprExpr :: CoreExpr -> String
@@ -118,12 +118,11 @@ pprExpr (ELet isrec defns expr)
 pprExpr (ECase expr alts)
     = iConcat [ iStr "case ",
                 pprExpr expr,
-                iStr " of ",
+                iStr " of",
                 iIndent (
                          iConcat [
                           iNewline,
-                                  iInterleave (iConcat [iStr ";", iNewline]) (map pprAlter alts) ]),
-                iNewline ]
+                                  iInterleave (iConcat [iStr ";", iNewline]) (map pprAlter alts) ])]
 
 pprAlter :: CoreAlt -> Iseq
 pprAlter (n, names, expr)
@@ -446,22 +445,59 @@ pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
 mk_sc :: Name -> [Name] -> Name -> CoreExpr -> (Name, [Name], CoreExpr)
 mk_sc name args _ expr = (name, args, expr)
 
--- Exercise 1.21. (p38) todo print case expression
+-- Exercise 1.21. (p38) see test.hs
+-- Exercise 1.22. (p38) see test.hs
 
--- putStr ( pprint (parse exercise21))
-exercise21 = "f = 3;\
-             \g x y = let z = x in z ;\
-             \h x = case (let y = x in y) of\
-             \  <1> -> 2 ;\
-             \  <2> -> 5"
+-- Exercise 1.24. (p40)
 
 -- Expressions
 pExpr :: Parser CoreExpr
-pExpr = pApplication
-        `pAlt` pAexpr
-        `pAlt` pELet
+pExpr = pELet
         `pAlt` pECase
+        `pAlt` pELam
+        `pAlt` pExpr1
+        `pAlt` pApplication
 
+-- Let
+
+pELet :: Parser CoreExpr
+pELet = pThen4 f (pLit "let" `pAlt` pLit "letrec") pDefns (pLit "in") pExpr
+    where
+      f "let" defns _ expr = ELet False defns expr
+      f "letrec" defns _ expr = ELet True defns expr
+
+pDefns :: Parser [(Name, CoreExpr)]
+pDefns = pOneOrMoreWithSep pDefn (pLit ";")
+
+pDefn = pThen3 f pVar (pLit "=") pExpr
+    where
+      f name _ expr = (name, expr)
+
+-- Case
+
+pECase :: Parser CoreExpr
+pECase = pThen f (pLit "case" `pSkip` pExpr)
+                 (pLit "of" `pSkip` pAlternatives)
+    where
+      f expr alts = ECase expr alts
+
+pAlternatives :: Parser [CoreAlt]
+pAlternatives = pOneOrMoreWithSep pAlternative (pLit ";")
+
+pAlternative :: Parser CoreAlt
+pAlternative = pThen3 f (pLit "<" `pSkip` pNum)
+                        (pLit ">" `pSkip` (pZeroOrMore pVar))
+                        (pLit "->" `pSkip` pExpr)
+    where
+      f i names expr = (i, names, expr)
+
+-- Lambda
+pELam :: Parser CoreExpr
+pELam = pThen f (pLit "\\" `pSkip` (pOneOrMore pVar))
+                (pLit "." `pSkip` pExpr)
+    where
+      f vars expr = ELam vars expr
+        
 -- Binary operators
 
 data PartialExpr = NoOp | FoundOp Name CoreExpr
@@ -497,52 +533,6 @@ pExpr5c = pZeroOrMore (pThen FoundOp (pLit "*" `pAlt` pLit "/") pExpr6)
 
 pExpr6 = pAexpr
 
--- Lambda
-pELam :: Parser CoreExpr
-pELam = pThen f (pLit "\\" `pSkip` (pOneOrMore pVar))
-                (pLit "." `pSkip` pExpr)
-    where
-      f vars expr = ELam vars expr
-
--- Case
-
-pECase :: Parser CoreExpr
-pECase = pThen f (pLit "case" `pSkip` pExpr)
-                 (pLit "of" `pSkip` pAlternatives)
-    where
-      f expr alts = ECase expr alts
-
-pAlternatives :: Parser [CoreAlt]
-pAlternatives = pOneOrMoreWithSep pAlternative (pLit ";")
-
-pAlternative :: Parser CoreAlt
-pAlternative = pThen3 f (pLit "<" `pSkip` pNum)
-                        (pLit ">" `pSkip` (pZeroOrMore pVar))
-                        (pLit "->" `pSkip` pExpr)
-    where
-      f i names expr = (i, names, expr)
-
--- Application
-
-pApplication = (pOneOrMore pAexpr) `pApply` mk_ap_chain
-mk_ap_chain :: [CoreExpr] -> CoreExpr
-mk_ap_chain xs = foldl1 EAp xs
-
--- Let
-
-pELet :: Parser CoreExpr
-pELet = pThen4 f (pLit "let" `pAlt` pLit "letrec") pDefns (pLit "in") pExpr
-    where
-      f "let" defns _ expr = ELet False defns expr
-      f "letrec" defns _ expr = ELet True defns expr
-
-pDefns :: Parser [(Name, CoreExpr)]
-pDefns = pOneOrMoreWithSep pDefn (pLit ";")
-
-pDefn = pThen3 f pVar (pLit "=") pExpr
-    where
-      f name _ expr = (name, expr)
-
 -- Atomic Exprssions
 
 pAexpr :: Parser CoreExpr
@@ -557,6 +547,7 @@ pEVar = pVar `pApply` EVar
 pENum :: Parser CoreExpr
 pENum = pNum `pApply` ENum
 
+-- pSkip throws away result of the first parser like >>
 pSkip :: Parser a -> Parser b -> Parser b
 pSkip p1 p2 = pThen (\v1 v2 -> v2) p1 p2
 
@@ -571,3 +562,10 @@ pParenthesis = pThen3 f (pLit "(") pExpr (pLit ")")
     where
       f _ v _ = v
 
+-- Application
+
+-- Exercise 1.23. (p39)
+
+pApplication = (pOneOrMore pAexpr) `pApply` mk_ap_chain
+mk_ap_chain :: [CoreExpr] -> CoreExpr
+mk_ap_chain xs = foldl1 EAp xs
