@@ -17,3 +17,7 @@ flatten col ((IIndent seq, indent) : seqs)
     = flatten col ((seq, col + 2) : seqs)
 
 ** p33: definition of pVar is missing.
+
+** p40: assembleOp only handles right associative infix operators
+
+

@@ -5,6 +5,7 @@ import Char (isDigit, isAlpha)
 -- 1.3 Data types for the Core language
 
 data Expr a = EVar Name
+            | E String (Expr a) (Expr a)
             | ENum Int
             | EConstr Int Int
             | EAp (Expr a) (Expr a)
@@ -94,9 +95,14 @@ iDisplay :: Iseq -> String	-- Turn an iseq into a string
 pprExpr :: CoreExpr -> Iseq
 
 pprExpr (EVar v) = iStr v
+pprExpr (ENum n) = iNum n
 
-pprExpr (EAp (EAp (EVar "+") e1) e2) -- (p27)
-    = iConcat [ pprAExpr e1, iStr " + ", pprAExpr e2 ]
+-- pprExpr (EAp (EAp (EVar "+") e1) e2) -- (p28)
+--    = iConcat [ pprAExpr e1, iStr " + ", pprAExpr e2 ]
+
+pprExpr (EAp (EAp (EVar op) e1) e2)
+   | op `elem` ["&", "|", "<", "<=", "==", "~=", "<=", ">", "+", "-", "*", "/"]
+    = iConcat [ pprAExpr e1, iStr " ", iStr op, iStr " ", pprAExpr e2 ]
 
 pprExpr (EAp e1 e2) = (pprExpr e1) `iAppend` (iStr " ") `iAppend` (pprAExpr e2)
 
@@ -128,13 +134,25 @@ iInterleave _ [] = iNil
 iInterleave _ [x] = x
 iInterleave sep (x:xs) = x `iAppend` sep `iAppend` iInterleave sep xs
 
--- pprint prog = iDisplay (pprProgram prog)
+pprint prog = iDisplay (pprProgram prog)
 
 -- Exercise 1.3 (p25)
 
 pprAExpr :: CoreExpr -> Iseq
 pprAExpr e | isAtomicExpr e = pprExpr e
            | otherwise = iStr "(" `iAppend` pprExpr e `iAppend` iStr ")"
+
+pprScDfn :: CoreScDefn -> Iseq
+pprScDfn (name, args, e) = iConcat [iStr name, iStr " ",
+                                    iInterleave (iStr " ") (map iStr args),
+                                    iStr " = ",
+                                    pprExpr e]
+
+-- putStr (pprint (parse "f = 3; g x y = let z = x in z"))
+pprProgram :: CoreProgram -> Iseq
+pprProgram defs = iInterleave (iStr ";" `iAppend` iNewline)
+                              (map pprScDfn defs)
+                  `iAppend` iNewline
 
 -- 1.5.3 Implementing iseq (p25)
 
@@ -410,7 +428,13 @@ pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
 mk_sc :: Name -> [Name] -> Name -> CoreExpr -> (Name, [Name], CoreExpr)
 mk_sc name args _ expr = (name, args, expr)
 
--- Exercise 1.21. (p38)
+-- Exercise 1.21. (p38) todo print case expression
+
+exercise21 = "f = 3;\
+             \g x y = let z = x in z ;\
+             \h x = case (let y = x in y) of\
+             \  <1> -> 2 ;\
+             \  <2> -> 5"
 
 -- Expressions
 pExpr :: Parser CoreExpr
@@ -419,7 +443,7 @@ pExpr = pApplication
         `pAlt` pELet
         `pAlt` pECase
 
--- Binary operators (todo)
+-- Binary operators
 
 data PartialExpr = NoOp | FoundOp Name CoreExpr
 
@@ -427,31 +451,32 @@ assembleOp :: CoreExpr -> PartialExpr -> CoreExpr
 assembleOp e1 NoOp = e1
 assembleOp e1 (FoundOp op e2) = EAp (EAp (EVar op) e1) e2
 
+assembleOpL :: CoreExpr -> [PartialExpr] -> CoreExpr
+assembleOpL e es = foldl (\x (FoundOp op y) -> EAp (EAp (EVar op) x) y) e es
+
 pRelop :: Parser String
 pRelop = pSat (`elem` ["<", "<=", "==", "~=", "<=", ">"])
 
 pExpr1,  pExpr2,  pExpr3,  pExpr4,  pExpr5 :: Parser CoreExpr
-pExpr1c, pExpr2c, pExpr3c, pExpr4c, pExpr5c :: Parser PartialExpr
+pExpr1c, pExpr2c :: Parser PartialExpr
+pExpr3c, pExpr4c, pExpr5c :: Parser [PartialExpr]
 
 pExpr1 = pThen assembleOp pExpr2 pExpr1c
-pExpr1c = (pThen FoundOp (pLit "|") pExpr2) `pAlt` (pEmpty NoOp)
+pExpr1c = (pThen FoundOp (pLit "|") pExpr1) `pAlt` (pEmpty NoOp)
 
 pExpr2 = pThen assembleOp pExpr3 pExpr2c
-pExpr2c = (pThen FoundOp (pLit "&") pExpr3) `pAlt` (pEmpty NoOp)
+pExpr2c = (pThen FoundOp (pLit "&") pExpr2) `pAlt` (pEmpty NoOp)
 
-pExpr3 = pThen assembleOp pExpr4 pExpr3c
-pExpr3c = (pThen FoundOp pRelop pExpr4) `pAlt` (pEmpty NoOp)
+pExpr3 = pThen assembleOpL pExpr4 pExpr3c
+pExpr3c = pZeroOrMore (pThen FoundOp pRelop pExpr4)
 
-pExpr4 = pThen assembleOp pExpr5 pExpr4c
-pExpr4c = (pThen FoundOp (pLit "+" `pAlt` pLit "-") pExpr5) `pAlt` (pEmpty NoOp)
+pExpr4 = pThen assembleOpL pExpr5 pExpr4c
+pExpr4c = pZeroOrMore (pThen FoundOp (pLit "+" `pAlt` pLit "-") pExpr5)
 
-pExpr5 = pThen assembleOp pExpr6 pExpr5c
-pExpr5c = (pThen FoundOp (pLit "*" `pAlt` pLit "/") pExpr6) `pAlt` (pEmpty NoOp)
-
--- pExpr5 = p
+pExpr5 = pThen assembleOpL pExpr6 pExpr5c
+pExpr5c = pZeroOrMore (pThen FoundOp (pLit "*" `pAlt` pLit "/") pExpr6)
 
 pExpr6 = pAexpr
-
 
 -- Lambda
 pELam :: Parser CoreExpr
@@ -527,16 +552,3 @@ pParenthesis = pThen3 f (pLit "(") pExpr (pLit ")")
     where
       f _ v _ = v
 
-
--- pAExpr = pVar
---   `pAlt` 
-
---             | ENum Int
--- pNum :: Parser ENum         
--- -- > pVar ["let", "world"] -- []
--- pVar = pSat isVar
---     where
---       isVar cs | elem cs keywords == True = False
---       isVar (c:cs) = isAlpha c && isVar' cs
---       isVar' (c:cs) = isIdChar c && isVar' cs
---       isVar' [] = True
