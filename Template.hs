@@ -39,15 +39,15 @@ type TiState = (TiStack, TiDump, TiHeap, TiGlobals, TiStats)
 
 type TiStack = [Addr]
 
-data TiDump = DummyTiDump
+data TiDump = DummyTiDump deriving (Show)
 initialTiDump = DummyTiDump
 
 type TiHeap = Heap Node
 
-
 data Node = NAp Addr Addr			-- Application
           | NSupercomb Name [Name] CoreExpr	-- Supercombinator
           | NNum Int				-- A number
+            deriving (Show)
 
 type TiGlobals = ASSOC Name Addr
 
@@ -84,5 +84,7 @@ allocateSc heap (name, args, body)
     = (heap', (name, addr))
       where
         (heap', addr) = hAlloc heap (NSupercomb name args body)
+
+-- compile $ parse "main = 3 + 4"
 
 -- 2.3.5 The evaluator (p57)

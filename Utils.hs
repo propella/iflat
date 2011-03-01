@@ -4,21 +4,56 @@ module Utils where
 
 -- A.1.2 Representation (p271)
 
-type Heap a = (Int, [Int], [(Int, a)])
+-- type Heap a = (Int, [Int], [(Int, a)])
 type Addr   = Int
 
-hInitial :: (Int, [Int], [a])
-hInitial                             = (0,       [1..], [])
-hAlloc  (size, (next:free), cts) n   = ((size+1, free,  (next,n) : cts),next)
-hUpdate (size, free,        cts) a n = (size,   free,   (a,n) : remove cts a)
-hFree   (size, free,        cts) a   = (size-1, a:free, remove cts a)
+-- hInitial :: (Int, [Int], [a])
+-- hInitial                             = (0,       [1..], [])
+-- hAlloc  (size, (next:free), cts) n   = ((size+1, free,  (next,n) : cts),next)
+-- hUpdate (size, free,        cts) a n = (size,   free,   (a,n) : remove cts a)
+-- hFree   (size, free,        cts) a   = (size-1, a:free, remove cts a)
 
-hLookup (size,free,cts) a
+-- hLookup (size,free,cts) a
+--     = aLookup cts a (error ("can’t find node " ++ showaddr a ++ " in heap"))
+
+-- hAddresses (size, free, cts) = [addr | (addr, node) <- cts]
+
+-- hSize (size, free, cts) = size
+
+-- note: Because Heap has an infinite list, I made it to a data for printig.
+
+data Heap a = Heap Int [Int] [(Int, a)]
+
+hInitial :: Heap a
+hInitial                                = Heap 0         [1..]    []
+hAlloc  (Heap size (next:free) cts) n   = (Heap (size+1) free     ((next,n) : cts), next)
+hUpdate (Heap size free        cts) a n = Heap size      free     ((a,n) : remove cts a)
+hFree   (Heap size free        cts) a   = Heap (size-1)  (a:free) (remove cts a)
+
+hLookup (Heap size free cts) a
     = aLookup cts a (error ("can’t find node " ++ showaddr a ++ " in heap"))
 
-hAddresses (size, free, cts) = [addr | (addr, node) <- cts]
+hAddresses (Heap size free cts) = [addr | (addr, node) <- cts]
 
 hSize (size, free, cts) = size
+
+-- note: Heap Printer
+
+instance (Show a) => Show (Heap a) where
+    showsPrec _ (Heap size free cts)  = showString "{ Heap "
+                                        . showString "size = "
+                                        . shows size
+                                        . showString ", contents =\n"
+                                        . showContents cts
+                                        . showString " }"
+
+showContents :: Show a => [(Int, a)] -> String -> String
+showContents xs = foldr display id xs
+    where display (addr, node) rest = shows addr . showString ": "
+                                      . shows node . showString "\n"
+                                      . rest
+
+--
 
 hNull      = 0
 hIsnull a  = a == 0
