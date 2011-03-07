@@ -14,7 +14,7 @@ type Addr   = Int
 -- hFree   (size, free,        cts) a   = (size-1, a:free, remove cts a)
 
 -- hLookup (size,free,cts) a
---     = aLookup cts a (error ("can’t find node " ++ showaddr a ++ " in heap"))
+--     = aLookup cts a (error ("can't find node " ++ showaddr a ++ " in heap"))
 
 -- hAddresses (size, free, cts) = [addr | (addr, node) <- cts]
 
@@ -31,7 +31,7 @@ hUpdate (Heap size free        cts) a n = Heap size      free     ((a,n) : remov
 hFree   (Heap size free        cts) a   = Heap (size-1)  (a:free) (remove cts a)
 
 hLookup (Heap size free cts) a
-    = aLookup cts a (error ("can’t find node " ++ showaddr a ++ " in heap"))
+    = aLookup cts a (error ("can't find node " ++ showaddr a ++ " in heap"))
 
 hAddresses (Heap size free cts) = [addr | (addr, node) <- cts]
 

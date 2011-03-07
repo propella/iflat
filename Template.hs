@@ -108,6 +108,8 @@ isDataNode :: Node -> Bool
 isDataNode (NNum n) = True
 isDataNode node	= False
 
+-- (note) those "step" functions are eval in SICP's term
+
 step :: TiState -> TiState
 
 step state
@@ -139,6 +141,8 @@ getargs heap (sc:stack)
     = map get_arg stack
       where get_arg addr = arg where (NAp fun arg) = hLookup heap addr
 
+-- instantiate is substitute and apply in SICP's term
+
 instantiate :: CoreExpr         -- Body of supercombinator
             -> TiHeap           -- Heap before instantiation
             -> ASSOC Name Addr  -- Association of names to addresses
@@ -161,9 +165,13 @@ instantiate (ELet isrec defs body) heap env
 instantiate (ECase e alts) heap env = error "Can’t instantiate case exprs"
     
 instantiateConstr tag arity heap env 
-    = error "Can’t instantiate constructors yet"
-instantiateLet isrec defs body heap env 
-    = error "Can’t instantiate let(rec)s yet"
+    = error "Can't instantiate constructors yet"
+
+-- instantiateLet isrec defs body heap env 
+--    = error "Can't instantiate let(rec)s yet"
+
+
+
 
 -- 2.3.6 Formatting the results (p61)
 
@@ -219,4 +227,39 @@ showStats (stack, dump, heap, globals, stats)
 
 -- Exercise 2.4. (p62)
 
--- runProg "main = S K K 3"
+-- putStrLn $ runProg "main = S K K 3"
+
+-- 2.4 Mark 2: let(rec) expressions (p63)
+
+-- Exercise 2.10 (p63)
+
+instantiateDefs :: [(Name, CoreExpr)] -> TiHeap -> ASSOC Name Addr -> (TiHeap, ASSOC Name Addr)
+
+instantiateDefs xs heap env = foldr instantiateDef (heap, []) xs
+    where instantiateDef (name, expr) (heap', bindings) =
+              let (heap'', addr) = instantiate expr heap' env
+              in (heap'', (name, addr):bindings)
+
+instantiateLet :: IsRec -> [(Name, CoreExpr)] -> CoreExpr -> TiHeap -> ASSOC Name Addr -> (TiHeap, Addr)
+instantiateLet False defs body heap env
+    = let (heap', bindings) = instantiateDefs defs heap env
+      in instantiate body heap' (bindings ++ env)
+
+-- Exercise 2.11. (p63)
+
+instantiateLet True defs body heap env
+    = let (heap', bindings) = instantiateDefs defs heap env'
+          env' = bindings ++ env
+      in instantiate body heap' env'
+
+exercise_2_11 = "pair x y f = f x y ;\n\
+                \fst p = p K ;\n\
+                \snd p = p K1 ;\n\
+                \f x y = letrec\n\
+                \        a = pair x b ;\n\
+                \        b = pair y a\n\
+                \        in\n\
+                \          fst (snd (snd (snd a))) ;\n\
+                \main = f 3 4\n"
+                        
+-- putStrLn $ runProg exercise_2_11
